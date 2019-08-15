@@ -21,6 +21,8 @@ Now you can **point your browser to [http://localhost:7777/](http://localhost:77
 
 You can also **run the server in https**, putting in the *ssl* directory two files named *httprint_key.pem* and *httprint_cert.pem*
 
+By default the **--print-with-code** argument is true, and the uploaded files are just scheduled for priting. To actually print them, you should supply the generated code, for example: `curl -X POST http://localhost:7777/api/print/1234`
+
 
 # License and copyright
 

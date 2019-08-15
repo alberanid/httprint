@@ -12,8 +12,10 @@ function uploadFile() {
             if (reply && !reply.error) {
                 iziToast.success({
                     title: "DONE!",
-                    message: "file sent to printer",
+                    message: reply.message,
                     position: 'topCenter',
+                    timeout: false,
+                    closeOnEscape: true,
                     layout: 2
                 });
             } else {

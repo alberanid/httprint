@@ -16,9 +16,11 @@ limitations under the License.
 """
 
 import os
+import re
 import time
+import glob
 import random
-import asyncio
+import shutil
 import logging
 import subprocess
 import multiprocessing as mp
@@ -32,10 +34,12 @@ from tornado import gen, escape
 
 
 API_VERSION = '1.0'
-UPLOAD_PATH = 'uploads'
+QUEUE_DIR = 'queue'
+ARCHIVE = True
+ARCHIVE_DIR = 'archive'
 PRINT_CMD = ['lp']
-PROCESS_TIMEOUT = 60
-ENCODING = 'utf-8'
+CODE_DIGITS = 4
+PRINT_WITH_CODE = True
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -118,8 +122,51 @@ class BaseHandler(tornado.web.RequestHandler):
         p = mp.Process(target=self._run, args=(cmd,))
         p.start()
 
+    def print_file(self, fname):
+        cmd = PRINT_CMD + [fname]
+        self.run_subprocess(cmd)
+        if self.cfg.archive:
+            if not os.path.isdir(self.cfg.archive_dir):
+                os.makedirs(self.cfg.archive_dir)
+            shutil.move(fname, self.cfg.archive_dir)
+
+
+class PrintHandler(BaseHandler):
+    """File print handler."""
+    @gen.coroutine
+    def post(self, code=None):
+        if not code:
+            self.build_error("empty code")
+            return
+        files = glob.glob(self.cfg.queue_dir + '/%s-*' % code)
+        if not files:
+            self.build_error("no matching files")
+            return
+        self.print_file(files[0])
+        self.build_success("file sent to printer")
+
+
 class UploadHandler(BaseHandler):
-    """Reset schedules handler."""
+    """File upload handler."""
+    def generateCode(self):
+        filler = '%0' + str(self.cfg.code_digits) + 'd'
+        existing = set()
+        re_code = re.compile('(\d{' + str(self.cfg.code_digits) + '})-.*')
+        for fname in glob.glob(self.cfg.queue_dir + '/*'):
+            fname = os.path.basename(fname)
+            match = re_code.match(fname)
+            if not match:
+                continue
+            fcode = match.group(1)
+            existing.add(fcode)
+        code = None
+        for i in range(10**self.cfg.code_digits):
+            intCode = random.randint(0, (10**self.cfg.code_digits)-1)
+            code = filler % intCode
+            if code not in existing:
+                break
+        return code
+
     @gen.coroutine
     def post(self):
         if not self.request.files.get('file'):
@@ -132,13 +179,12 @@ class UploadHandler(BaseHandler):
             extension = os.path.splitext(webFname)[1]
         except Exception:
             pass
-        if not os.path.isdir(UPLOAD_PATH):
-            os.makedirs(UPLOAD_PATH)
-        fname = '%s-%s%s' % (
-            time.strftime('%Y%m%d%H%M%S'),
-            '%04d' % random.randint(0, 9999),
-            extension)
-        pname = os.path.join(UPLOAD_PATH, fname)
+        if not os.path.isdir(self.cfg.queue_dir):
+            os.makedirs(self.cfg.queue_dir)
+        now = time.strftime('%Y%m%d%H%M%S')
+        code = self.generateCode()
+        fname = '%s-%s%s' % (code, now, extension)
+        pname = os.path.join(self.cfg.queue_dir, fname)
         try:
             with open(pname, 'wb') as fd:
                 fd.write(fileinfo['body'])
@@ -147,12 +193,15 @@ class UploadHandler(BaseHandler):
             return
         try:
             with open(pname + '.info', 'w') as fd:
-                fd.write('originale file name: %s\n' % webFname)
+                fd.write('original file name: %s\n' % webFname)
+                fd.write('uploaded on: %s\n' % now)
         except Exception:
             pass
-        cmd = PRINT_CMD + [pname]
-        self.run_subprocess(cmd)
-        self.build_success("file sent to printer")
+        if self.cfg.print_with_code:
+            self.build_success("go to the printer and enter this code: %s" % code)
+        else:
+            self.print_file(pname)
+            self.build_success("file sent to printer")
 
 
 class TemplateHandler(BaseHandler):
@@ -175,6 +224,11 @@ def serve():
             help='specify the SSL certificate to use for secure connections')
     define('ssl_key', default=os.path.join(os.path.dirname(__file__), 'ssl', 'httprint_key.pem'),
             help='specify the SSL private key to use for secure connections')
+    define('code-digits', default=CODE_DIGITS, help='number of digits of the code', type=int)
+    define('queue-dir', default=QUEUE_DIR, help='directory to store files before they are printed', type=str)
+    define('archive', default=True, help='archive printed files', type=bool)
+    define('archive-dir', default=ARCHIVE_DIR, help='directory to archive printed files', type=str)
+    define('print-with-code', default=True, help='a code must be entered for printing', type=bool)
     define('debug', default=False, help='run in debug mode', type=bool)
     tornado.options.parse_command_line()
 
@@ -185,12 +239,15 @@ def serve():
     if os.path.isfile(options.ssl_key) and os.path.isfile(options.ssl_cert):
         ssl_options = dict(certfile=options.ssl_cert, keyfile=options.ssl_key)
 
-    init_params = dict(listen_port=options.port, logger=logger, ssl_options=ssl_options)
+    init_params = dict(listen_port=options.port, logger=logger, ssl_options=ssl_options, cfg=options)
 
     _upload_path = r'upload/?'
+    _print_path = r'print/(?P<code>\d+)'
     application = tornado.web.Application([
             (r'/api/%s' % _upload_path, UploadHandler, init_params),
             (r'/api/v%s/%s' % (API_VERSION, _upload_path), UploadHandler, init_params),
+            (r'/api/%s' % _print_path, PrintHandler, init_params),
+            (r'/api/v%s/%s' % (API_VERSION, _print_path), PrintHandler, init_params),
             (r'/?(.*)', TemplateHandler, init_params),
         ],
         static_path=os.path.join(os.path.dirname(__file__), 'dist/static'),
