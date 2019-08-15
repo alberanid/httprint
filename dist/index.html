@@ -11,8 +11,12 @@
 <body>
     <h1>Upload a file to print</h1>
 
-    <input id="upload-file" type="file" />
-
+    File to print: <input id="upload-file" type="file" />
+    <br>
+    <br>
+    Number of copies: <input id="copies" type="number" min="1" max="10" value="1" />
+    <br>
+    <br>
     <button onClick="uploadFile();">print</button>
 </body>
 </html>

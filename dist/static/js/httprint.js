@@ -1,9 +1,11 @@
 function uploadFile() {
     let photo = document.getElementById("upload-file").files[0];
+    let copies = document.getElementById('copies').value;
     let formData = new FormData();
 
     formData.append("file", photo);
-    var uploadFile = document.getElementById('upload-file');
+    formData.append("copies", copies);
+    var uploadField = document.getElementById('upload-file');
     fetch("/api/upload", {method: "POST", body: formData})
         .then(function(response) {
             return response.json();
@@ -26,7 +28,7 @@ function uploadFile() {
                     layout: 2
                 });
             }
-            uploadFile.value = null;
+            uploadField.value = null;
         })
         .catch(function(err) {
             iziToast.error({
@@ -35,6 +37,6 @@ function uploadFile() {
                 position: 'topCenter',
                 layout: 2
             });
-            uploadFile.value = null;
+            uploadField.value = null;
         });
 }

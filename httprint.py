@@ -37,12 +37,15 @@ API_VERSION = '1.0'
 QUEUE_DIR = 'queue'
 ARCHIVE = True
 ARCHIVE_DIR = 'archive'
-PRINT_CMD = ['lp']
+PRINT_CMD = ['lp', '-n', '%(copies)s']
 CODE_DIGITS = 4
+MAX_PAGES = 10
 PRINT_WITH_CODE = True
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
+
+re_pages = re.compile('^Pages:\s+(\d+)$', re.M | re.I)
 
 
 class HTTPrintBaseException(Exception):
@@ -109,26 +112,40 @@ class BaseHandler(tornado.web.RequestHandler):
         self.set_status(status)
         self.write({'error': False, 'message': message})
 
-    def _run(self, cmd):
+    def _run(self, cmd, fname):
         p = subprocess.Popen(cmd, close_fds=True)
         p.communicate()
+        if self.cfg.archive:
+            if not os.path.isdir(self.cfg.archive_dir):
+                os.makedirs(self.cfg.archive_dir)
+            for fn in glob.glob(fname + '*'):
+                shutil.move(fn, self.cfg.archive_dir)
+        for fn in glob.glob(fname + '*'):
+            try:
+                os.unlink(fn)
+            except Exception:
+                pass
 
-    def run_subprocess(self, cmd):
+    def run_subprocess(self, cmd, fname):
         """Execute the given action.
 
         :param cmd: the command to be run with its command line arguments
         :type cmd: list
         """
-        p = mp.Process(target=self._run, args=(cmd,))
+        p = mp.Process(target=self._run, args=(cmd, fname))
         p.start()
 
     def print_file(self, fname):
-        cmd = PRINT_CMD + [fname]
-        self.run_subprocess(cmd)
-        if self.cfg.archive:
-            if not os.path.isdir(self.cfg.archive_dir):
-                os.makedirs(self.cfg.archive_dir)
-            shutil.move(fname, self.cfg.archive_dir)
+        copies = 1
+        try:
+            with open(fname + '.copies', 'r') as fd:
+                copies = int(fd.read())
+                if copies < 1:
+                    copies = 1
+        except Exception:
+            pass
+        cmd = [x % {'copies': copies} for x in PRINT_CMD] + [fname]
+        self.run_subprocess(cmd, fname)
 
 
 class PrintHandler(BaseHandler):
@@ -138,7 +155,8 @@ class PrintHandler(BaseHandler):
         if not code:
             self.build_error("empty code")
             return
-        files = glob.glob(self.cfg.queue_dir + '/%s-*' % code)
+        files = [x for x in sorted(glob.glob(self.cfg.queue_dir + '/%s-*' % code))
+                 if not x.endswith('.info') and not x.endswith('.pages')]
         if not files:
             self.build_error("no matching files")
             return
@@ -172,6 +190,16 @@ class UploadHandler(BaseHandler):
         if not self.request.files.get('file'):
             self.build_error("no file uploaded")
             return
+        copies = 1
+        try:
+            copies = int(self.get_argument('copies'))
+            if copies < 1:
+                copies = 1
+        except Exception:
+            pass
+        if copies > self.cfg.max_pages:
+            self.build_error('you have asked too many copies')
+            return
         fileinfo = self.request.files['file'][0]
         webFname = fileinfo['filename']
         extension = ''
@@ -195,8 +223,38 @@ class UploadHandler(BaseHandler):
             with open(pname + '.info', 'w') as fd:
                 fd.write('original file name: %s\n' % webFname)
                 fd.write('uploaded on: %s\n' % now)
+                fd.write('copies: %d\n' % copies)
         except Exception:
             pass
+        try:
+            with open(pname + '.copies', 'w') as fd:
+                fd.write('%d' % copies)
+        except Exception:
+            pass
+        failure = False
+        if self.cfg.check_pdf_pages or self.cfg.pdf_only:
+            try:
+                p = subprocess.Popen(['pdfinfo', pname], stdout=subprocess.PIPE)
+                out, _ = p.communicate()
+                if p.returncode != 0 and self.cfg.pdf_only:
+                    self.build_error('the uploaded file does not seem to be a PDF')
+                    failure = True
+                out = out.decode('utf-8', errors='ignore')
+                pages = int(re_pages.findall(out)[0])
+                if pages * copies > self.cfg.max_pages and self.cfg.check_pdf_pages:
+                    self.build_error('too many pages to print (%d)' % (pages * copies))
+                    failure = True
+            except Exception:
+                self.build_error('unable to get PDF information')
+                failure = True
+                pass
+        if failure:
+            for fn in glob.glob(pname + '*'):
+                try:
+                    os.unlink(fn)
+                except Exception:
+                    pass
+            return
         if self.cfg.print_with_code:
             self.build_success("go to the printer and enter this code: %s" % code)
         else:
@@ -225,10 +283,13 @@ def serve():
     define('ssl_key', default=os.path.join(os.path.dirname(__file__), 'ssl', 'httprint_key.pem'),
             help='specify the SSL private key to use for secure connections')
     define('code-digits', default=CODE_DIGITS, help='number of digits of the code', type=int)
+    define('max-pages', default=MAX_PAGES, help='maximum number of pages to print', type=int)
     define('queue-dir', default=QUEUE_DIR, help='directory to store files before they are printed', type=str)
     define('archive', default=True, help='archive printed files', type=bool)
     define('archive-dir', default=ARCHIVE_DIR, help='directory to archive printed files', type=str)
     define('print-with-code', default=True, help='a code must be entered for printing', type=bool)
+    define('pdf-only', default=True, help='only print PDF files', type=bool)
+    define('check-pdf-pages', default=True, help='check that the number of pages of PDF files do not exeed --max-pages', type=bool)
     define('debug', default=False, help='run in debug mode', type=bool)
     tornado.options.parse_command_line()
 
