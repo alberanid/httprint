@@ -12,31 +12,41 @@ function uploadFile() {
         })
         .then(function(reply) {
             if (reply && !reply.error) {
-                iziToast.success({
-                    title: "DONE!",
-                    message: reply.message || "file sent to printer",
-                    position: "topCenter",
-                    timeout: false,
-                    closeOnEscape: true,
-                    layout: 2
+                $.toast({
+                    text: reply.message || "file sent to printer",
+                    heading: "DONE!",
+                    icon: "success",
+                    showHideTransition: "fade",
+                    allowToastClose: true,
+                    hideAfter: false,
+                    stack: 5,
+                    position: "top-center"
                 });
             } else {
-                iziToast.error({
-                    title: "ERROR!",
-                    message: reply.message || "unable to print file",
-                    position: "topCenter",
-                    layout: 2
+                $.toast({
+                    text: reply.message || "unable to print file",
+                    heading: "ERROR!",
+                    icon: "error",
+                    showHideTransition: "fade",
+                    allowToastClose: true,
+                    hideAfter: 5000,
+                    stack: 5,
+                    position: "top-center"
                 });
             }
             uploadField.value = null;
         })
         .catch(function(err) {
             console.log(err);
-            iziToast.error({
-                title: "ERROR!",
-                message: "failed to send file",
-                position: "topCenter",
-                layout: 2
+            $.toast({
+                text: "failed to send file",
+                heading: "ERROR!",
+                icon: "error",
+                showHideTransition: "fade",
+                allowToastClose: true,
+                hideAfter: 5000,
+                stack: 5,
+                position: "top-center"
             });
             uploadField.value = null;
         });
