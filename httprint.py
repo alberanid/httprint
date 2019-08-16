@@ -241,12 +241,13 @@ class UploadHandler(BaseHandler):
                     failure = True
                 out = out.decode('utf-8', errors='ignore')
                 pages = int(re_pages.findall(out)[0])
-                if pages * copies > self.cfg.max_pages and self.cfg.check_pdf_pages:
+                if pages * copies > self.cfg.max_pages and self.cfg.check_pdf_pages and not failure:
                     self.build_error('too many pages to print (%d)' % (pages * copies))
                     failure = True
             except Exception:
-                self.build_error('unable to get PDF information')
-                failure = True
+                if not failure:
+                    self.build_error('unable to get PDF information')
+                    failure = True
                 pass
         if failure:
             for fn in glob.glob(pname + '*'):

@@ -1,22 +1,52 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <meta charset="utf-8" />
-    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
-    <link rel="stylesheet" type="text/css" href="/static/css/iziToast.min.css">
-    <script src="/static/js/iziToast.min.js"></script>
-    <script src="/static/js/httprint.js"></script>
-    <title>HTTPrint</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+  <link rel="stylesheet" type="text/css" href="/static/css/bootstrap.min.css">
+  <link rel="stylesheet" type="text/css" href="/static/css/iziToast.min.css">
+  <script src="/static/js/jquery-3.4.1.min.js"></script>
+  <script src="/static/js/bootstrap.min.js"></script>
+  <script src="/static/js/iziToast.min.js"></script>
+  <script src="/static/js/httprint.js"></script>
+  <title>HTTPrint</title>
 </head>
 <body>
-    <h1>Upload a file to print</h1>
-
-    File to print: <input id="upload-file" type="file" />
-    <br>
-    <br>
-    Number of copies: <input id="copies" type="number" min="1" max="10" value="1" />
-    <br>
-    <br>
-    <button onClick="uploadFile();">print</button>
+  <div class="container">
+    <div class="row">
+      <div class="col-sm">
+        <div class="jumbotron jumbotron-fluid">
+          <div class="container">
+            <h1 class="display-4">HTTPrint</h1>
+            <p class="lead">Upload and print a file.</p>
+            Instructions:
+            <ol>
+              <li>Upload a file, select the number of copies and click the "print" button</li>
+              <li>Write down the code you will receive</li>
+              <li>head to the printer</li>
+              <li>insert the code in the touchpad</li>
+            </ol>
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="upload-file">File to print</label>
+          <input id="upload-file" type="file" class="form-control-file">
+        </div>
+        <div class="form-group">
+          <label for="copies">Number of copies</label>
+          <input id="copies" type="number" min="1" max="10" value="1" class="form-control">
+        </div>
+        <button id="print-btn" class="btn-lg btn-primary">print</button>
+      </div>
+    </div>
+  </div>
+  <footer class="footer mt-auto py-3">
+    <div class="container">
+      <span class="text-muted">
+          HTTPrint <a href="https://github.com/alberanid/httprint">https://github.com/alberanid/httprint</a>
+      </span>
+    </div>
+  </footer>
 </body>
 </html>
