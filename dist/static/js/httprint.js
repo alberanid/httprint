@@ -22,6 +22,8 @@ function uploadFile() {
                     stack: 5,
                     position: "top-center"
                 });
+                uploadField.value = null;
+                copies.value = 1;
             } else {
                 $.toast({
                     text: reply.message || "unable to print file",
@@ -34,7 +36,6 @@ function uploadFile() {
                     position: "top-center"
                 });
             }
-            uploadField.value = null;
         })
         .catch(function(err) {
             console.log(err);
@@ -48,7 +49,6 @@ function uploadFile() {
                 stack: 5,
                 position: "top-center"
             });
-            uploadField.value = null;
         });
 }
 
