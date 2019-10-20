@@ -33,6 +33,10 @@ By default:
 * **--pdf-only** is true, meaning that only PDF files are allowed
 * **--check-pdf-pages** is true, and the number of pages of a PDF are taken into consideration, calculating the maximum number of pages to print
 
+See the **--help** output for more options.
+
+Once a document is queued, it can be made persistent creating an empty file *code-docname.pdf.keep* in the *queue* directory.
+
 
 # License and copyright
 

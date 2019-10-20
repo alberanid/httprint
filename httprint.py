@@ -37,7 +37,7 @@ API_VERSION = '1.0'
 QUEUE_DIR = 'queue'
 ARCHIVE = True
 ARCHIVE_DIR = 'archive'
-PRINT_CMD = ['lp', '-n', '%(copies)s']
+PRINT_CMD = 'lp -n %(copies)s'
 CODE_DIGITS = 4
 MAX_PAGES = 10
 PRINT_WITH_CODE = True
@@ -112,9 +112,15 @@ class BaseHandler(tornado.web.RequestHandler):
         self.set_status(status)
         self.write({'error': False, 'message': message})
 
-    def _run(self, cmd, fname):
+    def _run(self, cmd, fname, callback=None):
         p = subprocess.Popen(cmd, close_fds=True)
         p.communicate()
+        if callback:
+            callback(cmd, fname, p)
+
+    def _archive(self, cmd, fname, p):
+        if os.path.isfile('%s.keep' % fname):
+            return
         if self.cfg.archive:
             if not os.path.isdir(self.cfg.archive_dir):
                 os.makedirs(self.cfg.archive_dir)
@@ -126,13 +132,13 @@ class BaseHandler(tornado.web.RequestHandler):
             except Exception:
                 pass
 
-    def run_subprocess(self, cmd, fname):
+    def run_subprocess(self, cmd, fname, callback=None):
         """Execute the given action.
 
         :param cmd: the command to be run with its command line arguments
         :type cmd: list
         """
-        p = mp.Process(target=self._run, args=(cmd, fname))
+        p = mp.Process(target=self._run, args=(cmd, fname, callback))
         p.start()
 
     def print_file(self, fname):
@@ -144,8 +150,9 @@ class BaseHandler(tornado.web.RequestHandler):
                     copies = 1
         except Exception:
             pass
-        cmd = [x % {'copies': copies} for x in PRINT_CMD] + [fname]
-        self.run_subprocess(cmd, fname)
+        print_cmd = self.cfg.print_cmd.split(' ')
+        cmd = [x % {'copies': copies} for x in print_cmd] + [fname]
+        self.run_subprocess(cmd, fname, self._archive)
 
 
 class PrintHandler(BaseHandler):
@@ -291,6 +298,7 @@ def serve():
     define('print-with-code', default=True, help='a code must be entered for printing', type=bool)
     define('pdf-only', default=True, help='only print PDF files', type=bool)
     define('check-pdf-pages', default=True, help='check that the number of pages of PDF files do not exeed --max-pages', type=bool)
+    define('print-cmd', default=PRINT_CMD, help='command used to print the documents')
     define('debug', default=False, help='run in debug mode', type=bool)
     tornado.options.parse_command_line()
 
