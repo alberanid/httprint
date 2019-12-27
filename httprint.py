@@ -162,6 +162,11 @@ class PrintHandler(BaseHandler):
         if not code:
             self.build_error("empty code")
             return
+        remote_ip = self.request.headers.get("X-Real-IP") or \
+            self.request.headers.get("X-Forwarded-For") or \
+            self.request.remote_ip
+        if remote_ip not in ('127.0.0.1', '::1', 'localhost'):
+            self.build_error("invalid caller")
         files = [x for x in sorted(glob.glob(self.cfg.queue_dir + '/%s-*' % code))
                  if not x.endswith('.info') and not x.endswith('.pages')]
         if not files:
