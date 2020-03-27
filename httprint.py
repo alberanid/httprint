@@ -32,12 +32,14 @@ from tornado.options import define, options
 import tornado.web
 from tornado import gen, escape
 
+import configparser
 
 API_VERSION = '1.0'
 QUEUE_DIR = 'queue'
 ARCHIVE = True
 ARCHIVE_DIR = 'archive'
-PRINT_CMD = 'lp -n %(copies)s'
+PRINT_CMD = 'lp -n %(copies)s -o sides=%(sides)s -o sides=%(media)s'
+
 CODE_DIGITS = 4
 MAX_PAGES = 10
 PRINT_WITH_CODE = True
@@ -143,17 +145,22 @@ class BaseHandler(tornado.web.RequestHandler):
 
     def print_file(self, fname):
         copies = 1
-        try:
-            with open(fname + '.copies', 'r') as fd:
-                copies = int(fd.read())
-                if copies < 1:
-                    copies = 1
-        except Exception:
-            pass
-        print_cmd = self.cfg.print_cmd.split(' ')
-        cmd = [x % {'copies': copies} for x in print_cmd] + [fname]
-        self.run_subprocess(cmd, fname, self._archive)
+        sides = "two-sided-long-edge"
+        media = "A4"
 
+        config = configparser.ConfigParser()
+        config.read(fname + '.info')
+        printconf = config['print']
+        copies = printconf.getint('copies')
+        if copies < 1:
+            copies = 1
+        sides = printconf.get('sides')
+        media = printconf.get('media')
+        
+        print_cmd = self.cfg.print_cmd.split(' ')
+        cmd = [x % {'copies': copies, 'sides': sides, 'media': media} for x in print_cmd] + [fname]
+        print (cmd)
+        self.run_subprocess(cmd, fname, self._archive)
 
 class PrintHandler(BaseHandler):
     """File print handler."""
@@ -167,13 +174,35 @@ class PrintHandler(BaseHandler):
             self.request.remote_ip
         if remote_ip not in ('127.0.0.1', '::1', 'localhost'):
             self.build_error("invalid caller")
+            return
         files = [x for x in sorted(glob.glob(self.cfg.queue_dir + '/%s-*' % code))
-                 if not x.endswith('.info') and not x.endswith('.pages')]
+                 if not x.endswith('.info') and not x.endswith('.keep')]
         if not files:
             self.build_error("no matching files")
             return
         self.print_file(files[0])
         self.build_success("file sent to printer")
+
+class QueryHandler(BaseHandler):
+    """File print handler."""
+    @gen.coroutine
+    def post(self, code=None, ppd=None):
+        if not code:
+            self.build_error("empty code")
+            return
+        files = [x for x in sorted(glob.glob(self.cfg.queue_dir + '/%s-*' % code))
+                 if not x.endswith('.info') and not x.endswith('.keep')]
+        if not files:
+            self.build_error("no matching files")
+            return
+        
+        #questa e' una prova per leggere il file di configurazione
+        #e farsi mandare il file da stampare
+        config = configparser.ConfigParser()
+        config.read(files[0] + '.info')
+        printconf = config['print']
+        self.build_success(printconf['name'])
+
 
 
 class UploadHandler(BaseHandler):
@@ -203,6 +232,13 @@ class UploadHandler(BaseHandler):
             self.build_error("no file uploaded")
             return
         copies = 1
+
+        #questi per ora stanno qui perche' non sso come implemtare la parte web
+        sides = "two-sided-long-edge"
+        media = "A4"
+        color = False
+
+
         try:
             copies = int(self.get_argument('copies'))
             if copies < 1:
@@ -231,18 +267,23 @@ class UploadHandler(BaseHandler):
         except Exception as e:
             self.build_error("error writing file %s: %s" % (pname, e))
             return
+
+        #questo l'ho aggiuto io. ho qualche dubbio su dove settare la variabile config
+        config = configparser.ConfigParser()
+        config['print'] = {}
+        printconf = config['print']
+        printconf['name'] = '%s' % webFname
+        printconf['date'] = '%s' % now
+        printconf['copies'] = '%d' % copies
+        printconf['sides'] = '%s' % sides
+        printconf['media'] = '%s' % media
+        printconf['color'] = '%s' % color
         try:
-            with open(pname + '.info', 'w') as fd:
-                fd.write('original file name: %s\n' % webFname)
-                fd.write('uploaded on: %s\n' % now)
-                fd.write('copies: %d\n' % copies)
+            with open(pname + '.info', 'w') as configfile:
+                 config.write(configfile)
         except Exception:
             pass
-        try:
-            with open(pname + '.copies', 'w') as fd:
-                fd.write('%d' % copies)
-        except Exception:
-            pass
+
         failure = False
         if self.cfg.check_pdf_pages or self.cfg.pdf_only:
             try:
@@ -306,7 +347,7 @@ def serve():
     define('print-cmd', default=PRINT_CMD, help='command used to print the documents')
     define('debug', default=False, help='run in debug mode', type=bool)
     tornado.options.parse_command_line()
-
+    
     if options.debug:
         logger.setLevel(logging.DEBUG)
 
@@ -318,11 +359,17 @@ def serve():
 
     _upload_path = r'upload/?'
     _print_path = r'print/(?P<code>\d+)'
+    _query_path = r'query/(?P<code>\d+)'
+    _query_path_ppd = r'query/(?P<code>\d+)/(?P<ppd>\d+)'
     application = tornado.web.Application([
             (r'/api/%s' % _upload_path, UploadHandler, init_params),
             (r'/api/v%s/%s' % (API_VERSION, _upload_path), UploadHandler, init_params),
             (r'/api/%s' % _print_path, PrintHandler, init_params),
             (r'/api/v%s/%s' % (API_VERSION, _print_path), PrintHandler, init_params),
+            (r'/api/%s' % _query_path, QueryHandler, init_params),
+            (r'/api/v%s/%s' % (API_VERSION, _query_path), QueryHandler, init_params),
+            (r'/api/%s' % _query_path_ppd, QueryHandler, init_params),
+            (r'/api/v%s/%s' % (API_VERSION, _query_path_ppd), QueryHandler, init_params),
             (r'/?(.*)', TemplateHandler, init_params),
         ],
         static_path=os.path.join(os.path.dirname(__file__), 'dist/static'),
